@@ -24,4 +24,5 @@ urlpatterns = [
     re_path(r'addUser/$',io.addUser),
     re_path(r'deleteData/$',io.deleteAllData),
     re_path(r'userAuth/$',io.userAuth),
+    re_path(r'logout/$',io.logout),
 ]

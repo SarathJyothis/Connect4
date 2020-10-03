@@ -12,17 +12,20 @@ from InputOutput.models import users
 
 # Create your views here.
 docDir='Data/Documents/'
-
+#For user Authentication - Login
 def userAuth(req):
+    if 'userId' in req.session:
+        return JsonResponse({"Message":"Logout from the active session first"})
     bodyJson = req.body.decode('utf-8')
     body = json.loads(bodyJson)
     username = body['username']
     psswd = body['psswd']
     user = users.objects.filter(username=username,psswd=psswd).only('username')
     if len(user) > 1:
-        return JsonResponse({"Message":"Please enter correct credentials"})
+        return JsonResponse({"Message":"Please enter valid credentials"})
     req.session['userId'] = user[0].username
-    return JsonResponse({"Message":"Get it"})
+    return JsonResponse({"Message":"Authorised"})
+#API endpoint for users to upload PDF document and retrieve document digitization related data
 @csrf_exempt
 def userUpload(req):
     if req.method == 'POST':
@@ -45,12 +48,14 @@ def userUpload(req):
         docDtlsCreate.save()
 
 
-        return JsonResponse({"Message":"File received"})
+        return JsonResponse({"Message":"File received","documentId":docId})
     elif req.method == 'GET':
-        if req.session['userId'] != req.POST['userId']:
-            return JsonResponse({"Message":"Unauthorised access detected"})
+        if 'userId' not in req.session:
+            return JsonResponse({"Message":"Login to access the feature"})
         bodyJson = req.body.decode('utf-8')
         body = json.loads(bodyJson)
+        if req.session['userId'] != body['userId']:
+            return JsonResponse({"Message":"Unauthorised access detected"})
         if 'userId' in body and 'requestType' in body and 'documentId' in body:
             statData = docMas.objects.filter(docId=body['documentId'])
             if body['requestType'] == 'Track Status':
@@ -98,12 +103,15 @@ def formatChecker(body):
     for x,y in body.items():
         dataFormat[x]=y
 
+#API to Add ot update digitized data
 def interUser(req):
     if req.method == 'GET':
-        if req.session['userId'] != req.POST['userId']:
-            return JsonResponse({"Message":"Unauthorised access detected"})
+        if 'userId' not in req.session:
+            return JsonResponse({"Message":"Login to access the feature"})
         bodyJson = req.body.decode('utf-8')
         body = json.loads(bodyJson)
+        if req.session['userId'] != body['userId']:
+            return JsonResponse({"Message":"Unauthorised access detected"})
         if 'requestType' in body and 'userId' in body and 'documentId' in body :
             formatChecker(body)
             global dataFormat
@@ -118,6 +126,7 @@ def interUser(req):
                         if x != 'userId' and x != 'documentId' and x != 'requestType' and x != 'fileName' and x != 'filePath' :
                             docDtlsAdd.x = y
                     docDtlsAdd.save()
+                    return JsonResponse({"Message":"Added"})
                 else:
                     return JsonResponse({"Message" : "Invalid Inputs"})
             elif body['requestType'] == 'Update' :
@@ -125,37 +134,43 @@ def interUser(req):
                     docMasUpdate = docMas.objects.filter(docId = body['documentId']).update(origFileName=dataFormat['fileName'],filePath=dataFormat['filePath'],status=dataFormat['status'])
                 docDtlsUpdate = docDtls.objects.filter(docId = body['documentId']).update(invoiceNumber=dataFormat['invoiceNumber'],buyer=dataFormat['buyer'],seller=dataFormat['seller'],billTo=dataFormat['billTo'],shipTo=dataFormat['shipTo'],items=dataFormat['items'],totalPrice=dataFormat['totalPrice'],GST=dataFormat['GST'],paymentInfo=dataFormat['paymentInfo'],paymentStatus=dataFormat['paymentStatus'],additional=dataFormat['additional'])
                 docDtlsU = docDtls.objects.filter(docId = body['documentId'])
-                for x in docDtlsU:
-                    print(x.docId)
-            return JsonResponse({"Message" : "Updated"})
+                return JsonResponse({"Message" : "Updated"})
         else:
             return JsonResponse({"Message" : "Invalid request"})
     else:
         return JsonResponse({"Message" : "Invalid request method"})
 
+#To add a user
 def addUser(req):
     if req.method == 'GET':
-        if req.session['userId'] != req.POST['userId']:
-            return JsonResponse({"Message":"Unauthorised access detected"})
         bodyJson = req.body.decode('utf-8')
         body = json.loads(bodyJson)
-        if 'username' in body and 'psswd' in body and 'requestType' in body:
+        if 'userId' in body and 'psswd' in body and 'requestType' in body:
             if body['requestType'] == 'Add User':
-                user = users(username=body['username'],psswd=body['psswd'])
+                user = users(username=body['userId'],psswd=body['psswd'])
                 user.save()
                 return JsonResponse({"Message":"User added successfully"})
         else:
             return JsonResponse({"Message":"Invalid request format"})
 
+#To delete all data from the system
 def deleteAllData(req):
     docMasDel = docMas.objects.all()
     docDtlsDel = docDtls.objects.all()
     usersDel = users.objects.all()
     for x in docMasDel:
+        if os.path.exists(x.filePath):
+            os.remove(x.filePath)
         x.delete()
     for x in docDtlsDel:
         x.delete()
     for x in usersDel:
         x.delete()
     return JsonResponse({"Message":"Deleted"})
-    
+
+#To logout
+def logout(req):
+    if 'userId' in req.session:
+        del req.session['userId']
+        return JsonResponse({"Message":"Logged out"})
+    return JsonResponse({"Message":"No active login detected"})
